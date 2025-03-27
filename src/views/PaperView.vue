@@ -453,11 +453,100 @@ const loadData = async () => {
 // 修复会议和年份数据加载
 const loadConferencesAndYears = async () => {
   try {
-    // 手动设置可用的会议和年份
-    const confYearMap = {
-      'cvpr': ['2024', '2023', '2022', '2021', '2020', '2019', '2018', '2015'],
-      'iccv': ['2023', '2021', '2019']
-    };
+    const confYearMap = {};
+    
+    // 使用 GitHub API 获取仓库文件列表
+    const repoOwner = 'xiuguangli'; // 替换为你的 GitHub 用户名
+    const repoName = 'Paper_Discoverer'; // 替换为你的仓库名
+    const path = 'public/assets/paper_info'; // 数据文件所在路径
+    
+    try {
+      // 从 GitHub API 获取文件列表
+      const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/contents/${path}?ref=main`;
+      console.log('正在从 GitHub API 获取文件列表:', apiUrl);
+      
+      const response = await fetch(apiUrl);
+      if (!response.ok) {
+        throw new Error(`GitHub API 错误: ${response.status}`);
+      }
+      
+      const files = await response.json();
+      console.log('获取到的文件列表:', files);
+      
+      // 遍历文件列表，提取会议名和年份
+      for (const file of files) {
+        if (file.type === 'file' && file.name.endsWith('.json')) {
+          const matches = file.name.match(/^([a-z]+)_papersinfo_(\d{4})\.json$/);
+          if (matches) {
+            const conference = matches[1];
+            const year = matches[2];
+            
+            if (!confYearMap[conference]) {
+              confYearMap[conference] = [];
+            }
+            
+            if (!confYearMap[conference].includes(year)) {
+              confYearMap[conference].push(year);
+              console.log(`检测到${conference.toUpperCase()}会议${year}年数据`);
+            }
+          }
+        }
+      }
+      
+      // 为每个会议的年份排序（降序）
+      Object.keys(confYearMap).forEach(conf => {
+        confYearMap[conf].sort((a, b) => b - a);
+      });
+      
+    } catch (apiError) {
+      console.error('GitHub API 请求失败:', apiError);
+      console.log('尝试使用本地检测方法');
+      
+      // 备用方案：使用动态检测
+      const basePath = import.meta.env.PROD ? '/Paper_Discoverer' : '';
+      const possibleConferences = ['cvpr', 'iccv', 'eccv', 'nips', 'neurips', 'icml', 'iclr', 'acl', 'sigir', 'aaai', 'ijcai', 'cvf', 'corl'];
+      const currentYear = new Date().getFullYear();
+      const startYear = 2000;
+      
+      const checkPromises = [];
+      
+      for (const conf of possibleConferences) {
+        confYearMap[conf] = [];
+        
+        for (let year = startYear; year <= currentYear + 1; year++) {
+          const fileName = `${conf}_papersinfo_${year}.json`;
+          const url = `${basePath}/assets/paper_info/${fileName}`;
+          
+          const checkPromise = fetch(url, { method: 'HEAD' })
+            .then(response => {
+              if (response.ok) {
+                if (!confYearMap[conf]) {
+                  confYearMap[conf] = [];
+                }
+                confYearMap[conf].push(year.toString());
+                console.log(`检测到数据文件: ${fileName}`);
+              }
+            })
+            .catch(() => {
+              // 文件不存在，忽略错误
+            });
+          
+          checkPromises.push(checkPromise);
+        }
+      }
+      
+      // 等待所有检查完成
+      await Promise.all(checkPromises);
+      
+      // 清理空会议
+      Object.keys(confYearMap).forEach(conf => {
+        if (confYearMap[conf].length === 0) {
+          delete confYearMap[conf];
+        } else {
+          confYearMap[conf].sort((a, b) => b - a);
+        }
+      });
+    }
     
     // 更新状态
     conferences.value = Object.keys(confYearMap).sort();
