@@ -422,29 +422,20 @@ const loadData = async () => {
   try {
     // 构建文件名
     const fileName = `${selectedConference.value}_papersinfo_${selectedYear.value}.json`;
+    const basePath = import.meta.env.PROD ? '/Paper_Discoverer' : '';
     
     // 使用fetch直接获取JSON文件
     try {
       // 从public/assets目录加载
-      const response = await fetch(`/assets/paper_info/${fileName}`);
+      const response = await fetch(`${basePath}/assets/paper_info/${fileName}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       papers.value = await response.json();
     } catch (fetchError) {
       console.error('Failed to fetch JSON file:', fetchError);
-      
-      // 尝试备用路径
-      try {
-        const response = await fetch(`/src/assets/paper_info/${fileName}`);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        papers.value = await response.json();
-      } catch (backupError) {
-        console.error('Failed to fetch from backup path:', backupError);
-        throw new Error(`无法加载数据文件: ${fileName}`);
-      }
+      error.value = `无法加载数据文件: ${fileName}`;
+      papers.value = [];
     }
     
     // 初始化搜索结果计数
@@ -462,83 +453,33 @@ const loadData = async () => {
 // 修复会议和年份数据加载
 const loadConferencesAndYears = async () => {
   try {
-    let jsonFiles = {};
-    try {
-      // 尝试多种可能的路径格式
-      try {
-        jsonFiles = import.meta.glob('../assets/paper_info/*.json', { eager: false });
-        console.log('通过路径1成功获取文件列表');
-      } catch (err1) {
-        console.error('路径1获取文件列表失败:', err1);
-        
-        try {
-          jsonFiles = import.meta.glob('@/assets/paper_info/*.json', { eager: false });
-          console.log('通过路径2成功获取文件列表');
-        } catch (err2) {
-          console.error('路径2获取文件列表失败:', err2);
-          
-          try {
-            jsonFiles = import.meta.glob('/src/assets/paper_info/*.json', { eager: false });
-            console.log('通过路径3成功获取文件列表');
-          } catch (err3) {
-            console.error('路径3获取文件列表失败:', err3);
-            throw new Error('无法获取文件列表');
-          }
-        }
+    // 手动设置可用的会议和年份
+    const confYearMap = {
+      'cvpr': ['2024', '2023', '2022', '2021', '2020', '2019', '2018', '2015'],
+      'iccv': ['2023', '2021', '2019']
+    };
+    
+    // 更新状态
+    conferences.value = Object.keys(confYearMap).sort();
+    conferenceYears.value = confYearMap;
+    
+    console.log('可用会议:', conferences.value);
+    console.log('会议年份映射:', conferenceYears.value);
+    
+    // 设置默认选择
+    if (conferences.value.length > 0) {
+      selectedConference.value = conferences.value[0];
+      const years = conferenceYears.value[selectedConference.value];
+      if (years && years.length > 0) {
+        selectedYear.value = years[0];
       }
-
-      // 从文件路径中提取会议名称和年份
-      const confYearMap = {};
-      for (const path in jsonFiles) {
-        console.log('处理路径:', path);
-        // 使用正则表达式从路径中提取会议名称和年份
-        const matches = path.match(/\/([a-z]+)_papersinfo_(\d{4})\.json$/);
-        if (matches) {
-          const conference = matches[1];
-          const year = matches[2];
-          
-          if (!confYearMap[conference]) {
-            confYearMap[conference] = [];
-          }
-          
-          if (!confYearMap[conference].includes(year)) {
-            confYearMap[conference].push(year);
-          }
-          
-          console.log(`已识别${conference.toUpperCase()}会议${year}年数据`);
-        }
-      }
-      
-      // 对每个会议的年份进行排序（降序）
-      Object.keys(confYearMap).forEach(conf => {
-        confYearMap[conf].sort((a, b) => b - a);
-      });
-      
-      // 更新状态
-      conferences.value = Object.keys(confYearMap).sort();
-      conferenceYears.value = confYearMap;
-      
-      console.log('可用会议:', conferences.value);
-      console.log('会议年份映射:', conferenceYears.value);
-      
-      // 设置默认选择
-      if (conferences.value.length > 0) {
-        selectedConference.value = conferences.value[0];
-        const years = conferenceYears.value[selectedConference.value];
-        if (years && years.length > 0) {
-          selectedYear.value = years[0];
-        }
-      }
-      
-      // 加载初始数据
-      await loadData();
-      
-    } catch (err) {
-      console.error('会议和年份加载错误:', err);
-      error.value = `无法加载会议和年份数据: ${err.message}`;
     }
+    
+    // 加载初始数据
+    await loadData();
+    
   } catch (err) {
-    console.error('会议和年份加载外层错误:', err);
+    console.error('会议和年份加载错误:', err);
     error.value = `无法加载会议和年份数据: ${err.message}`;
   }
 };
